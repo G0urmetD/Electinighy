@@ -1,8 +1,11 @@
+<img src="/images/Electinighy.png" alt="Electinighy" width="200" height="200" /></a>
+
 # Electinighy
 Electinighy is a shell tool for updating an on-premise ELK cluster via apt repository. It supports updating ELK clusters in major versions 8 &amp; 9.
 
 ## Features
 - ✅ Supports updates to specific ELK versions (e.g. `8.18.1`)
+- ✅ Supports ELK major versions 8 & 9
 - ✅ Colored CLI output for `[INFO]`, `[WARN]`, `[ERROR]`
 - ✅ API key and APT repository validation
 - ✅ Debug mode available
