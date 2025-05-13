@@ -134,3 +134,6 @@ POST /_security/api_key
   }
 }
 ```
+
+## Author
+Feel free to report bugs or enhancements. - cheers g_ourmet
