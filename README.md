@@ -78,4 +78,59 @@ Optional Parameters:
 | `-d`         | `--debug`       | *(none)*      | `off`         | Enable debug mode with detailed curl logging      |
 | `-h`         | `--help`        | *(none)*      | —             | Show help message                                 |
 
+## API-Key Creation - Kibana Dev Tools
+```
+# minimal privileges
+POST /_security/api_key
+{
+  "name": "elk-update-script",
+  "expiration": "12h",
+  "role_descriptors": {
+    "elk_update_role": {
+      "cluster": [
+        "monitor",
+        "manage",
+        "manage_cluster_settings"
+      ],
+      "indices": [
+        {
+          "names": [ "*" ],
+          "privileges": [ "monitor", "manage", "create_index", "flush" ]
+        }
+      ],
+      "applications": [
+        {
+          "application": "kibana-.kibana",
+          "privileges": [ "read" ],
+          "resources": [ "*" ]
+        }
+      ]
+    }
+  }
+}
 
+# super user privileges
+POST /_security/api_key
+{
+  "name": "elk-update-superuser",
+  "expiration": "12h",
+  "role_descriptors": {
+    "superuser_clone": {
+      "cluster": [ "all" ],
+      "index": [
+        {
+          "names": [ "*" ],
+          "privileges": [ "all" ]
+        }
+      ],
+      "applications": [
+        {
+          "application": "*",
+          "privileges": [ "*" ],
+          "resources": [ "*" ]
+        }
+      ]
+    }
+  }
+}
+```
