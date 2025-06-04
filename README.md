@@ -53,7 +53,7 @@ Optional Parameters:
   -kip, --kb-ip     <IP>             Kibana IP address (default: same as --es-ip)
   -kp, --kb-port    <PORT>           Kibana port (default: 5601)
   -d, --debug                        Enables the debug mode for logging.
-  -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 60s)
+  -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 120s)
 
   -h, --help                         Show this help message and exit
 ```
@@ -84,7 +84,7 @@ Optional Parameters:
 POST /_security/api_key
 {
   "name": "elk-update-script",
-  "expiration": "12h",
+  "expiration": "3h",
   "role_descriptors": {
     "elk_update_role": {
       "cluster": [
@@ -113,7 +113,7 @@ POST /_security/api_key
 POST /_security/api_key
 {
   "name": "elk-update-superuser",
-  "expiration": "12h",
+  "expiration": "3h",
   "role_descriptors": {
     "superuser_clone": {
       "cluster": [ "all" ],
