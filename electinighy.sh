@@ -1,25 +1,26 @@
-#!/bin/sh
+#!/bin/bash
 
 ###############################################################################
 # ELK Stack Update Script (Elasticsearch & Kibana)
 # Description : Automates upgrade process for ELK Stack
 # Author      : g_ourmet
-# Version     : 0.7
+# Version     : 0.8.3
 # Notes       : POSIX-compliant, safe, extendable
 ###############################################################################
 
 #=============================#
 #        Script version       #
 #=============================#
-SCRIPT_VERSION="0.7-beta"
+SCRIPT_VERSION="0.8.3-beta"
 
 #=============================#
 #        Color Setup         #
 #=============================#
 COLOR_RESET="\033[0m"
-COLOR_INFO="\033[1;34m"    # Blue
-COLOR_WARN="\033[0;33m"    # Yellow/Orange
-COLOR_ERROR="\033[0;31m"   # Red
+COLOR_INFO="\033[1;34m"         # Blue
+COLOR_WARN="\033[0;33m"         # Yellow/Orange
+COLOR_ERROR="\033[0;31m"        # Red
+COLOR_DO="\033[38;5;151m"       # Mintgreen
 
 #=============================#
 #      Logging Function      #
@@ -39,6 +40,7 @@ log_msg() {
         INFO)   printf "${COLOR_INFO}[%s] %s${COLOR_RESET}\n" "$level" "$*" ;;
         WARN)   printf "${COLOR_WARN}[%s] %s${COLOR_RESET}\n" "$level" "$*" ;;
         ERROR)  printf "${COLOR_ERROR}[%s] %s${COLOR_RESET}\n" "$level" "$*" ;;
+        DO)     printf "${COLOR_DO}[%s] %s${COLOR_RESET}\n" "$level" "$*" ;;
         *)      printf "[%s] %s\n" "$level" "$*" ;;
     esac
     printf "[%s] [%s] %s\n" "$timestamp" "$level" "$*" >> "$LOG_FILE"
@@ -83,8 +85,8 @@ Optional Parameters:
   -kip, --kb-ip     <IP>             Kibana IP address (default: same as --es-ip)
   -kp, --kb-port    <PORT>           Kibana port (default: 5601)
   -d, --debug                        Enables the debug mode for logging.
-  -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 60s)
-  
+  -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 120s)
+
   -h, --help                         Show this help message and exit
 EOF
 }
@@ -109,8 +111,8 @@ KB_IP=""
 KB_PORT="5601"
 DEBUG_MODE=0
 DEBUG_LOG="$LOG_DIR/debug_elk_$(date '+%Y%m%d_%H%M%S').log"
-WAIT_TIME=60
-ES_START_WAIT=90
+WAIT_TIME=120
+ES_START_WAIT=120
 DRY_RUN=0
 
 #=============================#
@@ -164,7 +166,7 @@ fi
 #     Start of Script        #
 #=============================#
 print_banner
-log_msg "INFO" "Starting ELK update process"
+log_msg "DO" "Starting ELK update process"
 log_msg "INFO" "Target Version: $VERSION"
 log_msg "INFO" "Elasticsearch: ${ES_IP}:${ES_PORT}"
 log_msg "INFO" "Kibana: ${KB_IP}:${KB_PORT}"
@@ -290,46 +292,50 @@ stop_services() {
 #=============================#
 #   Check ELK APT Repository  #
 #=============================#
-get_repo_config() {
-    case "$VERSION" in
-        8.*)
-            REPO_FILE="elastic-8.x.list"
-            REPO_PATH="/etc/apt/sources.list.d/$REPO_FILE"
-            REPO_EXPECTED_CONTENT="deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main"
-            ;;
-        9.*)
-            REPO_FILE="elastic-9.x.list"
-            REPO_PATH="/etc/apt/sources.list.d/$REPO_FILE"
-            REPO_EXPECTED_CONTENT="deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/9.x/apt stable main"
-            ;;
-        *)
-            log_msg "ERROR" "Unsupported version: $VERSION"
-            exit 12 ;;
-    esac
-}
-
-check_apt_repository() {
-    log_msg "INFO" "Checking APT repository config for Elasticsearch $VERSION..."
+check_repo() {
+    local major_version="${VERSION%%.*}"
+    local repo_file="elastic-${major_version}.x.list"
+    local REPO_PATH="/etc/apt/sources.list.d/$repo_file"
+    local expected_url="https://artifacts.elastic.co/packages/${major_version}.x/apt"
+    local expected_dist="stable"
+    local expected_component="main"
+    local expected_keyring="elastic-archive-keyring.gpg"
 
     if [ ! -f "$REPO_PATH" ]; then
-        log_msg "ERROR" "Expected repo file not found: $REPO_PATH"
-        exit 10
+        log_msg "ERROR" "Repository file $REPO_PATH not found"
+        exit 13
     fi
 
-    if ! grep -Fxq "$REPO_EXPECTED_CONTENT" "$REPO_PATH"; then
-        log_msg "ERROR" "Repo content in $REPO_PATH does not match expected:"
-        log_msg "ERROR" "Expected: $REPO_EXPECTED_CONTENT"
-        exit 11
-    fi
+    local actual_line
+    actual_line=$(grep -vE '^\s*#|^\s*$' "$REPO_PATH" | head -n1)
 
-    log_msg "INFO" "Elastic APT repository file and content valid."
+    if [[ "$actual_line" =~ deb\ \[.*signed-by=/usr/share/keyrings/([a-zA-Z0-9._-]+)\.gpg.*\]\ https://artifacts.elastic.co/packages/([0-9]+)\.x/apt\ stable\ main ]]; then
+        local found_keyring="${BASH_REMATCH[1]}"
+        local found_version="${BASH_REMATCH[2]}"
+
+        if [[ "$found_keyring" != "elastic-archive-keyring" ]]; then
+            log_msg "ERROR" "Unexpected keyring: $found_keyring.gpg"
+            exit 14
+        fi
+
+        if [[ "$found_version" != "$major_version" ]]; then
+            log_msg "ERROR" "Repository version mismatch: expected ${major_version}.x, found ${found_version}.x"
+            exit 15
+        fi
+
+        log_msg "INFO" "Repository configuration is valid"
+    else
+        log_msg "ERROR" "Repository line in $REPO_PATH does not match expected format"
+        echo "[ERROR] Found: $actual_line"
+        exit 16
+    fi
 }
 
 #=============================#
 #   Upgrade ELK Components    #
 #=============================#
 upgrade_elk_components() {
-    log_msg "INFO" "Updating apt sources..."
+    log_msg "DO" "Updating apt sources..."
     if apt update >> "$LOG_FILE" 2>&1; then
         log_msg "INFO" "APT sources updated successfully."
     else
@@ -337,7 +343,7 @@ upgrade_elk_components() {
         exit 6
     fi
 
-    log_msg "INFO" "Installing Elasticsearch version $VERSION..."
+    log_msg "DO" "Installing Elasticsearch version $VERSION..."
     if apt install -y "elasticsearch=$VERSION" >> "$LOG_FILE" 2>&1; then
         log_msg "INFO" "Elasticsearch $VERSION installed successfully."
     else
@@ -345,7 +351,7 @@ upgrade_elk_components() {
         exit 7
     fi
 
-    log_msg "INFO" "Installing Kibana version $VERSION..."
+    log_msg "DO" "Installing Kibana version $VERSION..."
     if apt install -y "kibana=$VERSION" >> "$LOG_FILE" 2>&1; then
         log_msg "INFO" "Kibana $VERSION installed successfully."
     else
@@ -358,7 +364,7 @@ upgrade_elk_components() {
 #   Start Elasticsearch       #
 #=============================#
 start_elasticsearch() {
-    log_msg "INFO" "Starting Elasticsearch service..."
+    log_msg "DO" "Starting Elasticsearch service..."
     if systemctl start elasticsearch; then
         log_msg "INFO" "Elasticsearch service started."
     else
@@ -366,7 +372,7 @@ start_elasticsearch() {
         exit 20
     fi
 
-    log_msg "INFO" "Waiting ${ES_START_WAIT}s for Elasticsearch to initialize..."
+    log_msg "DO" "Waiting ${ES_START_WAIT}s for Elasticsearch to initialize..."
     sleep "$ES_START_WAIT"
 }
 
@@ -374,7 +380,7 @@ start_elasticsearch() {
 #   Reactivate Shard Allocation #
 #===============================#
 reactivate_shard_allocation() {
-    log_msg "INFO" "Reactivating shard allocation..."
+    log_msg "DO" "Reactivating shard allocation..."
     response=$(curl -sk -o /dev/null -w "%{http_code}" \
         -X PUT "https://${ES_IP}:${ES_PORT}/_cluster/settings" \
         -H "Authorization: ApiKey $API_KEY" \
@@ -392,7 +398,7 @@ reactivate_shard_allocation() {
 
     log_msg "INFO" "Shard allocation reactivated."
 
-    log_msg "INFO" "Waiting 60 seconds for cluster to reassign shards..."
+    log_msg "DO" "Waiting 60 seconds for cluster to reassign shards..."
     sleep 60
 }
 
@@ -411,7 +417,7 @@ check_elasticsearch_health() {
         log_msg "INFO" "Cluster health: $health (attempt $attempt/$max_attempts)"
 
         if [ "$health" = "green" ]; then
-            log_msg "INFO" "Elasticsearch cluster is healthy (green)."
+            log_msg "DO" "Elasticsearch cluster is healthy (green)."
             break
         fi
 
@@ -430,7 +436,7 @@ check_elasticsearch_health() {
 #     & Health-Check          #
 #=============================#
 start_kibana_and_check_health() {
-    log_msg "INFO" "Starting Kibana service..."
+    log_msg "DO" "Starting Kibana service..."
 
     if systemctl start kibana; then
         log_msg "INFO" "Kibana service started."
@@ -450,10 +456,12 @@ start_kibana_and_check_health() {
             "https://${KB_IP}:${KB_PORT}/api/status" \
             | grep -o '"level":"[a-z]*"' | cut -d':' -f2 | tr -d '"')
 
-        log_msg "INFO" "Kibana status: $status (attempt $attempt/$max_attempts)"
+        #log_msg "INFO" "Kibana status: $status (attempt $attempt/$max_attempts)"
+        echo -ne "\r${COLOR_INFO}[INFO] Kibana status: $status (attempt $attempt/$max_attempts)${COLOR_RESET}"
 
-        if [ "$status" = "available" ] || [ "$status" = "green" ]; then
+        if [ -n "$status" ] && { [ "$status" = "available" ] || [ "$status" = "green" ]; }; then
             log_msg "INFO" "Kibana is available."
+            echo ""
             break
         fi
 
@@ -471,7 +479,7 @@ start_kibana_and_check_health() {
 #     Valide ELK version      #
 #=============================#
 validate_elk_version() {
-    log_msg "INFO" "Checking if ELK version $VERSION is available via APT..."
+    log_msg "DO" "Checking if ELK version $VERSION is available via APT..."
 
     if ! apt-cache madison elasticsearch | grep -q "$VERSION"; then
         log_msg "ERROR" "Elasticsearch version $VERSION not available in apt-cache."
@@ -487,10 +495,27 @@ validate_elk_version() {
 }
 
 #=============================#
+#     Check ELK version       #
+#=============================#
+check_installed_version() {
+    es_installed=$(dpkg-query -W -f='${Version}' elasticsearch 2>/dev/null)
+    kb_installed=$(dpkg-query -W -f='${Version}' kibana 2>/dev/null)
+
+    if [ "$es_installed" = "$VERSION" ] && [ "$kb_installed" = "$VERSION" ]; then
+        log_msg "INFO" "Elasticsearch and Kibana are already at version $VERSION. No update needed."
+        exit 0
+    fi
+
+    if [ "$DEBUG_MODE" -eq 1 ]; then
+        log_msg "INFO" "Currently installed: Elasticsearch=$es_installed, Kibana=$kb_installed"
+    fi
+}
+
+#=============================#
 #     Cleanup temp files      #
 #=============================#
 cleanup_temp_files() {
-    log_msg "INFO" "Cleaning up temporary files..."
+    log_msg "DO" "Cleaning up temporary files..."
 
     # Beispiel: Alte Debug-Logs löschen (>5 Stück)
     find /var/log/elk-update/ -name "debug_elk_*.log" | sort -r | awk 'NR>5' | while read -r old; do
@@ -515,9 +540,9 @@ exit_summary() {
 #     Call Auth Function     #
 #=============================#
 validate_api_key
-get_repo_config
-check_apt_repository
+check_repo
 validate_elk_version
+check_installed_version
 
 prepare_elasticsearch
 wait_after_preparation
