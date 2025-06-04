@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 ###############################################################################
 # ELK Stack Update Script (Elasticsearch & Kibana)
