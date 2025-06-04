@@ -4,14 +4,14 @@
 # ELK Stack Update Script (Elasticsearch & Kibana)
 # Description : Automates upgrade process for ELK Stack
 # Author      : g_ourmet
-# Version     : 0.7
+# Version     : 0.8
 # Notes       : POSIX-compliant, safe, extendable
 ###############################################################################
 
 #=============================#
 #        Script version       #
 #=============================#
-SCRIPT_VERSION="0.7-beta"
+SCRIPT_VERSION="0.8-beta"
 
 #=============================#
 #        Color Setup         #
@@ -290,22 +290,40 @@ stop_services() {
 #=============================#
 #   Check ELK APT Repository  #
 #=============================#
-get_repo_config() {
-    case "$VERSION" in
-        8.*)
-            REPO_FILE="elastic-8.x.list"
-            REPO_PATH="/etc/apt/sources.list.d/$REPO_FILE"
-            REPO_EXPECTED_CONTENT="deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main"
-            ;;
-        9.*)
-            REPO_FILE="elastic-9.x.list"
-            REPO_PATH="/etc/apt/sources.list.d/$REPO_FILE"
-            REPO_EXPECTED_CONTENT="deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/9.x/apt stable main"
-            ;;
-        *)
-            log_msg "ERROR" "Unsupported version: $VERSION"
-            exit 12 ;;
-    esac
+check_repo() {
+    local expected_url="https://artifacts.elastic.co/packages/${VERSION%%.*}.x/apt"
+    local expected_dist="stable"
+    local expected_component="main"
+    local expected_keyring="elastic-archive-keyring.gpg"
+
+    if [ ! -f "$REPO_PATH" ]; then
+        log_msg "ERROR" "Repository file $REPO_PATH not found"
+        exit 13
+    fi
+
+    local actual_line
+    actual_line=$(grep -vE '^\s*#|^\s*$' "$REPO_PATH" | head -n1)
+
+    if [[ "$actual_line" =~ deb\ \[.*signed-by=/usr/share/keyrings/([a-zA-Z0-9._-]+)\.gpg.*\]\ https://artifacts.elastic.co/packages/([0-9]+)\.x/apt\ stable\ main ]]; then
+        local found_keyring="${BASH_REMATCH[1]}"
+        local found_version="${BASH_REMATCH[2]}"
+
+        if [[ "$found_keyring" != "elastic-archive-keyring" ]]; then
+            log_msg "ERROR" "Unexpected keyring: $found_keyring.gpg"
+            exit 14
+        fi
+
+        if [[ "$found_version" != "${VERSION%%.*}" ]]; then
+            log_msg "ERROR" "Repository version mismatch: expected ${VERSION%%.*}.x, found ${found_version}.x"
+            exit 15
+        fi
+
+        log_msg "INFO" "Repository configuration is valid"
+    else
+        log_msg "ERROR" "Repository line in $REPO_PATH does not match expected format"
+        echo "[ERROR] Found: $actual_line"
+        exit 16
+    fi
 }
 
 check_apt_repository() {
@@ -516,7 +534,7 @@ exit_summary() {
 #=============================#
 validate_api_key
 get_repo_config
-check_apt_repository
+check_repo
 validate_elk_version
 
 prepare_elasticsearch
