@@ -326,23 +326,6 @@ check_repo() {
     fi
 }
 
-check_apt_repository() {
-    log_msg "INFO" "Checking APT repository config for Elasticsearch $VERSION..."
-
-    if [ ! -f "$REPO_PATH" ]; then
-        log_msg "ERROR" "Expected repo file not found: $REPO_PATH"
-        exit 10
-    fi
-
-    if ! grep -Fxq "$REPO_EXPECTED_CONTENT" "$REPO_PATH"; then
-        log_msg "ERROR" "Repo content in $REPO_PATH does not match expected:"
-        log_msg "ERROR" "Expected: $REPO_EXPECTED_CONTENT"
-        exit 11
-    fi
-
-    log_msg "INFO" "Elastic APT repository file and content valid."
-}
-
 #=============================#
 #   Upgrade ELK Components    #
 #=============================#
@@ -533,7 +516,6 @@ exit_summary() {
 #     Call Auth Function     #
 #=============================#
 validate_api_key
-get_repo_config
 check_repo
 validate_elk_version
 
