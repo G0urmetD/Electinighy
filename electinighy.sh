@@ -4,14 +4,14 @@
 # ELK Stack Update Script (Elasticsearch & Kibana)
 # Description : Automates upgrade process for ELK Stack
 # Author      : g_ourmet
-# Version     : 0.8.2
+# Version     : 0.8.3
 # Notes       : POSIX-compliant, safe, extendable
 ###############################################################################
 
 #=============================#
 #        Script version       #
 #=============================#
-SCRIPT_VERSION="0.8.2-beta"
+SCRIPT_VERSION="0.8.3-beta"
 
 #=============================#
 #        Color Setup         #
@@ -20,7 +20,7 @@ COLOR_RESET="\033[0m"
 COLOR_INFO="\033[1;34m"         # Blue
 COLOR_WARN="\033[0;33m"         # Yellow/Orange
 COLOR_ERROR="\033[0;31m"        # Red
-COLOR_DO="\033[38;5;151m"    # Mintgrün
+COLOR_DO="\033[38;5;151m"       # Mintgreen
 
 #=============================#
 #      Logging Function      #
@@ -85,7 +85,7 @@ Optional Parameters:
   -kip, --kb-ip     <IP>             Kibana IP address (default: same as --es-ip)
   -kp, --kb-port    <PORT>           Kibana port (default: 5601)
   -d, --debug                        Enables the debug mode for logging.
-  -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 60s)
+  -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 120s)
 
   -h, --help                         Show this help message and exit
 EOF
@@ -495,6 +495,23 @@ validate_elk_version() {
 }
 
 #=============================#
+#     Check ELK version       #
+#=============================#
+check_installed_version() {
+    es_installed=$(dpkg-query -W -f='${Version}' elasticsearch 2>/dev/null)
+    kb_installed=$(dpkg-query -W -f='${Version}' kibana 2>/dev/null)
+
+    if [ "$es_installed" = "$VERSION" ] && [ "$kb_installed" = "$VERSION" ]; then
+        log_msg "INFO" "Elasticsearch and Kibana are already at version $VERSION. No update needed."
+        exit 0
+    fi
+
+    if [ "$DEBUG_MODE" -eq 1 ]; then
+        log_msg "INFO" "Currently installed: Elasticsearch=$es_installed, Kibana=$kb_installed"
+    fi
+}
+
+#=============================#
 #     Cleanup temp files      #
 #=============================#
 cleanup_temp_files() {
@@ -525,6 +542,7 @@ exit_summary() {
 validate_api_key
 check_repo
 validate_elk_version
+check_installed_version
 
 prepare_elasticsearch
 wait_after_preparation
