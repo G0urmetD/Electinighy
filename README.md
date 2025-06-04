@@ -41,7 +41,7 @@ Logs are written to `/var/log/elk-update/`:
                                                               888               888
                                                          Y8b d88P          Y8b d88P
                                                           "Y88P"            "Y88P"
-version: 0.8.2-beta Usage: ./elk-update.sh [OPTIONS]
+version: 0.8.3-beta Usage: ./elk-update.sh [OPTIONS]
 
 Required Parameters:
   -a, --api-key     <API_KEY>        API key for authentication
