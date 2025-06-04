@@ -41,7 +41,9 @@ Logs are written to `/var/log/elk-update/`:
                                                               888               888
                                                          Y8b d88P          Y8b d88P
                                                           "Y88P"            "Y88P"
-version: 0.8.3-beta Usage: ./elk-update.sh [OPTIONS]
+version: 0.9.1-beta
+
+Usage: ./electinighy.sh [OPTIONS]
 
 Required Parameters:
   -a, --api-key     <API_KEY>        API key for authentication
@@ -54,6 +56,7 @@ Optional Parameters:
   -kp, --kb-port    <PORT>           Kibana port (default: 5601)
   -d, --debug                        Enables the debug mode for logging.
   -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 120s)
+  -rs, --replica-shards              Sets replica shards to 0 for indicies and datastreams & reassign shards.
 
   -h, --help                         Show this help message and exit
 ```

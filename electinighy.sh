@@ -4,14 +4,14 @@
 # ELK Stack Update Script (Elasticsearch & Kibana)
 # Description : Automates upgrade process for ELK Stack
 # Author      : g_ourmet
-# Version     : 0.8.3
+# Version     : 0.9.1-beta
 # Notes       : POSIX-compliant, safe, extendable
 ###############################################################################
 
 #=============================#
 #        Script version       #
 #=============================#
-SCRIPT_VERSION="0.8.3-beta"
+SCRIPT_VERSION="0.9.1-beta"
 
 #=============================#
 #        Color Setup         #
@@ -20,7 +20,7 @@ COLOR_RESET="\033[0m"
 COLOR_INFO="\033[1;34m"         # Blue
 COLOR_WARN="\033[0;33m"         # Yellow/Orange
 COLOR_ERROR="\033[0;31m"        # Red
-COLOR_DO="\033[38;5;151m"       # Mintgreen
+COLOR_DO="\033[38;5;151m"    # Mintgrün
 
 #=============================#
 #      Logging Function      #
@@ -63,8 +63,7 @@ print_banner() {
                                                          Y8b d88P          Y8b d88P
                                                           "Y88P"            "Y88P"
 EOF
-    printf "version: ${SCRIPT_VERSION}"
-    printf " "
+    printf "version: ${SCRIPT_VERSION}\n\n"
 }
 
 #=============================#
@@ -86,6 +85,7 @@ Optional Parameters:
   -kp, --kb-port    <PORT>           Kibana port (default: 5601)
   -d, --debug                        Enables the debug mode for logging.
   -wt, --wait-time  <SECONDS>        Optional wait time before shutdown (default: 120s)
+  -rs, --replica-shards              Sets replica shards to 0 for indicies and datastreams & reassign shards.
 
   -h, --help                         Show this help message and exit
 EOF
@@ -114,6 +114,7 @@ DEBUG_LOG="$LOG_DIR/debug_elk_$(date '+%Y%m%d_%H%M%S').log"
 WAIT_TIME=120
 ES_START_WAIT=120
 DRY_RUN=0
+REPLICA_SHARDS_FIX=0
 
 #=============================#
 #   Parse CLI Arguments      #
@@ -139,6 +140,8 @@ while [ "$#" -gt 0 ]; do
                 exit 1
             fi
             shift 2 ;;
+        -rs|--replica-shards)
+            REPLICA_SHARDS_FIX=1; shift ;;
         -d|--debug)
             DEBUG_MODE=1; shift ;;
         -h|--help)
@@ -224,7 +227,7 @@ validate_api_key() {
     log_msg "INFO" "Validating API key with Kibana (/api/status)..."
     kb_status=$(curl -sk -o /dev/null -w "%{http_code}" \
         --request GET \
-        "https://${KB_IP}:${KB_PORT}/api/status" \
+        "http://${KB_IP}:${KB_PORT}/api/status" \
         -H "Authorization: ApiKey $API_KEY")
 
     if [ "$kb_status" -eq 200 ]; then
@@ -313,7 +316,9 @@ check_repo() {
         local found_keyring="${BASH_REMATCH[1]}"
         local found_version="${BASH_REMATCH[2]}"
 
-        if [[ "$found_keyring" != "elastic-archive-keyring" ]]; then
+        log_msg "INFO" "Repository uses keyring: ${found_keyring}.gpg and version path: ${found_version}.x"
+
+        if [[ "$found_keyring" != "elastic-archive-keyring" && "$found_keyring" != "elastic" ]]; then
             log_msg "ERROR" "Unexpected keyring: $found_keyring.gpg"
             exit 14
         fi
@@ -407,7 +412,7 @@ reactivate_shard_allocation() {
 #===============================#
 check_elasticsearch_health() {
     log_msg "INFO" "Checking Elasticsearch cluster health..."
-    max_attempts=30
+    max_attempts=60
     attempt=1
 
     while :; do
@@ -512,6 +517,36 @@ check_installed_version() {
 }
 
 #=============================#
+#     Fix replica shards      #
+#=============================#
+fix_replica_shards() {
+    log_msg "DO" "Applying replica shard workaround (set replicas to 0 + reroute)..."
+
+    local urls=(
+        "*/_settings"
+        ".ds-*/_settings"
+        "_cluster/reroute?retry_failed"
+    )
+
+    local methods=("PUT" "PUT" "POST")
+    local payloads=(
+        '{"index.number_of_replicas": 0}'
+        '{"index.number_of_replicas": 0}'
+        ''
+    )
+
+    for i in "${!urls[@]}"; do
+        log_msg "INFO" "Sending ${methods[$i]} to /${urls[$i]}"
+        status=$(call_api "${methods[$i]}" "https://${ES_IP}:${ES_PORT}/${urls[$i]}" "" "${payloads[$i]}")
+        if [ "$status" -eq 200 ]; then
+            log_msg "INFO" "Request to ${urls[$i]} succeeded."
+        else
+            log_msg "WARN" "Request to ${urls[$i]} returned HTTP $status"
+        fi
+    done
+}
+
+#=============================#
 #     Cleanup temp files      #
 #=============================#
 cleanup_temp_files() {
@@ -550,6 +585,12 @@ stop_services
 upgrade_elk_components
 start_elasticsearch
 reactivate_shard_allocation
+
+if [ "$REPLICA_SHARDS_FIX" -eq 1 ]; then
+    fix_replica_shards
+    log_msg "INFO" "Replica workaround applied. Continuing with health check."
+fi
+
 check_elasticsearch_health
 start_kibana_and_check_health
 
