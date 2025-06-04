@@ -291,7 +291,10 @@ stop_services() {
 #   Check ELK APT Repository  #
 #=============================#
 check_repo() {
-    local expected_url="https://artifacts.elastic.co/packages/${VERSION%%.*}.x/apt"
+    local major_version="${VERSION%%.*}"
+    local repo_file="elastic-${major_version}.x.list"
+    local REPO_PATH="/etc/apt/sources.list.d/$repo_file"
+    local expected_url="https://artifacts.elastic.co/packages/${major_version}.x/apt"
     local expected_dist="stable"
     local expected_component="main"
     local expected_keyring="elastic-archive-keyring.gpg"
@@ -313,8 +316,8 @@ check_repo() {
             exit 14
         fi
 
-        if [[ "$found_version" != "${VERSION%%.*}" ]]; then
-            log_msg "ERROR" "Repository version mismatch: expected ${VERSION%%.*}.x, found ${found_version}.x"
+        if [[ "$found_version" != "$major_version" ]]; then
+            log_msg "ERROR" "Repository version mismatch: expected ${major_version}.x, found ${found_version}.x"
             exit 15
         fi
 
